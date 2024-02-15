@@ -9,7 +9,7 @@ var spatial = SpatialHash.Get();
 
 var stopwatch = new System.Diagnostics.Stopwatch();
 
-var result = new HashSet<SpatialHashQueryResult>();
+var result = new List<SpatialHashQueryResult>();
 
 while (true) {
     stopwatch.Start();
@@ -19,23 +19,29 @@ while (true) {
         // random vec
         var vec = new Vector2(Random.Shared.NextSingle() * 20.0f, Random.Shared.NextSingle() * 20.0f);
 
-        spatial.addShape(Shape.Circle(vec, Random.Shared.NextSingle() * 2.0f),
+        spatial.AddShape(Shape.Circle(vec, Random.Shared.NextSingle() * 2.0f),
             EntityType.Enemy, i);
     }
+    
+    // average cell size
+    // var total = 0;
+    // foreach ((int key, var cell) in spatial.Cells) {
+    //     total += cell.Count;
+    // }
 
     int count = 0;
 
     // query 1000 times 
     for (var i = 0; i < 1000; i++) {
         var vec = new Vector2(Random.Shared.NextSingle() * 20.0f, Random.Shared.NextSingle() * 20.0f);
-        spatial.query(result, Shape.Circle(vec, 2.0f), EntityType.Enemy);
+        spatial.Query(result, Shape.Circle(vec, 2.0f), EntityType.Enemy);
 
         count += result.Count;
     }
 
-    spatial.clear();
-
     Console.WriteLine($"Count: {count} ... {stopwatch.ElapsedMilliseconds}ms");
+    // Console.WriteLine($"Count: {count} ... {stopwatch.ElapsedMilliseconds}ms  ... cells: {spatial.Cells.Count} ... Average cell size: {total / int.Max(spatial.Cells.Count, 1)}");
 
     stopwatch.Reset();
+    spatial.Clear();
 }

@@ -1,9 +1,9 @@
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace CsharpPerfTest;
 
-public enum ShapeKind : int {
-    Aabb,
+public enum ShapeKind : byte {
     Circle,
 }
 
@@ -21,46 +21,31 @@ public struct Shape {
         return shape;
     }
 
-    public static Shape Aabb(AabbShape s) {
-        var shape = new Shape {
-            Kind = ShapeKind.Aabb,
-            First = s.Min,
-            Second = s.Max,
-        };
-        return shape;
-    }
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public AabbShape BoundingRect() {
-        return this.Kind switch {
+        return Kind switch {
             ShapeKind.Circle => new AabbShape {
-                Min = this.First - new Vector2(this.Second.X),
-                Max = this.First + new Vector2(this.Second.X),
-            }
+                Min = First - new Vector2(Second.X),
+                Max = First + new Vector2(Second.X),
+            },
+            _ => new AabbShape()
         };
-        // ShapeKind.Aabb => this.aabb.boundingRect(),
-        // _ => throw new NotImplementedException(),
-        // }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly bool Intersects(Shape other) {
         // return this.circle.intersects(other);
 
         return (Kind, other.Kind) switch {
             (ShapeKind.Circle, ShapeKind.Circle) => Vector2.Distance(First, other.First) < Second.X + other.Second.X,
-            // _ => throw new NotImplementedException()
+            _ => false
         };
-
-        // return this.kind switch {
-        //     ShapeKind.Circle => this.circle.intersects(other),
-        //     ShapeKind.Aabb => this.aabb.intersects(other),
-        // };
     }
 }
 
 public struct AabbShape {
     public Vector2 Min;
     public Vector2 Max;
-    
 }
 
 public record struct SpatialHashData(
@@ -70,75 +55,102 @@ public record struct SpatialHashData(
 );
 
 public enum EntityType {
-    Player,
     Enemy
 }
 
 public struct SpatialHashQueryResult {
     public required EntityType Type;
     public required int EntityId;
-
-}
-
-public struct Enemy {
 }
 
 public struct Coord {
     public int X;
     public int Y;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int MakeKey(float x, float y) {
+        return 1000 * (int)x + (int)y;
+    }
+}
+
+public class ObjectPool<T> where T : new() {
+    private readonly Stack<T> _availableObjects = new Stack<T>();
+
+    public T Get() {
+        if (_availableObjects.Count == 0) {
+            return new T();
+        }
+
+        return _availableObjects.Pop();
+    }
+
+    public void Release(T obj) {
+        _availableObjects.Push(obj);
+    }
 }
 
 public struct SpatialHash {
+    public ObjectPool<List<SpatialHashData>> Pool = new();
     private static readonly SpatialHash Instance = new(2f);
 
     public static SpatialHash Get() {
         return Instance;
     }
 
-    public float gridSize;
-    public Dictionary<Coord, List<SpatialHashData>> cells;
+    public float GridSize;
+    public readonly Dictionary<int, List<SpatialHashData>> Cells;
 
     public SpatialHash(float gridSize) {
-        this.gridSize = gridSize;
-        this.cells = [];
+        GridSize = gridSize;
+        Cells = [];
     }
 
-    public readonly void clear() {
-        this.cells.Clear();
+    public readonly void Clear() {
+        // return to pool
+        foreach (var (key, value) in Cells) {
+            Pool.Release(value);
+        }
+        Cells.Clear();
     }
 
-    public void addShape(Shape shape, EntityType type, int entityId) {
+    public void AddShape(Shape shape, EntityType type, int entityId) {
         var rect = shape.BoundingRect();
-        var min = (rect.Min / this.gridSize).Floored();
-        var max = (rect.Max / this.gridSize).Ceiled();
+        var min = (rect.Min / GridSize).Floored();
+        var max = (rect.Max / GridSize).Ceiled();
 
-        for (var y = min.Y; y <= max.Y; y += 1) {
-            for (var x = min.X; x <= max.X; x += 1) {
-                var key = new Coord() { X = (int)x, Y = (int)y };
+        for (var y = min.Y; y < max.Y; y += 1) {
+            for (var x = min.X; x < max.X; x += 1) {
+                var key = Coord.MakeKey(x, y);
 
-                if (!this.cells.ContainsKey(key)) {
-                    this.cells[key] = [];
+                var item = new SpatialHashData(Shape: shape, Type: type, EntityId: entityId);
+                
+                if (Cells.TryGetValue(key, out var entry)) {
+                    entry.Add(item);
+
+                } else {
+                    var list = Pool.Get();
+                    list.Clear();
+                    list.Add(item);
+                    Cells[key] = list;
                 }
-
-                this.cells[key]
-                    .Add(new SpatialHashData(Shape: shape, Type: type, EntityId: entityId));
             }
         }
     }
 
-    public readonly void query(HashSet<SpatialHashQueryResult> results, Shape shape, EntityType? filter) {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly void Query(List<SpatialHashQueryResult> results, Shape shape, EntityType? filter) {
         var rect = shape.BoundingRect();
-        var min = (rect.Min / this.gridSize).Floored();
-        var max = (rect.Max / this.gridSize).Ceiled();
+        var min = (rect.Min / GridSize).Floored();
+        var max = (rect.Max / GridSize).Ceiled();
         // var results = new HashSet<SpatialHashQueryResult>(1);
 
         results.Clear();
 
         for (var y = min.Y; y <= max.Y; y += 1) {
             for (var x = min.X; x <= max.X; x += 1) {
-                var key = new Coord() { X = (int)x, Y = (int)y };
+                var key = Coord.MakeKey(x, y);
 
-                if (this.cells.TryGetValue(key, out var value)) {
+                if (this.Cells.TryGetValue(key, out var value)) {
                     foreach (var data in value) {
                         if (filter is not null && data.Type != filter) {
                             continue;
@@ -156,7 +168,7 @@ public struct SpatialHash {
                 }
             }
         }
-
+        
         // return results;
     }
 }
