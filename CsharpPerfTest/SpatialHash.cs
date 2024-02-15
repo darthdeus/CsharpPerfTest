@@ -11,49 +11,53 @@ public enum ShapeKind : int {
     Circle,
 }
 
-[StructLayout(LayoutKind.Explicit)]
 public struct Shape {
-    [FieldOffset(0)] public ShapeKind kind;
-
-    [FieldOffset(4)] public AabbShape aabb;
-
-    [FieldOffset(4)] public CircleShape circle;
+    public ShapeKind kind;
+    public Vector2 First;
+    public Vector2 Second;
 
     public static Shape Circle(CircleShape s) {
         var shape = new Shape {
             kind = ShapeKind.Circle,
-            aabb = default,
-            circle = default,
+            First = s.center,
+            Second = new Vector2(s.radius),
         };
-        shape.circle = s;
         return shape;
     }
 
     public static Shape Aabb(AabbShape s) {
         var shape = new Shape {
             kind = ShapeKind.Aabb,
-            aabb = default,
-            circle = default,
+            First = s.min,
+            Second = s.max,
         };
-        shape.aabb = s;
         return shape;
     }
 
     public AabbShape boundingRect() {
         return this.kind switch {
-            ShapeKind.Circle => this.circle.boundingRect(),
-            ShapeKind.Aabb => this.aabb.boundingRect(),
-            // _ => throw new NotImplementedException(),
+            ShapeKind.Circle => new AabbShape {
+                min = this.First - new Vector2(this.Second.X),
+                max = this.First + new Vector2(this.Second.X),
+            }
         };
+        // ShapeKind.Aabb => this.aabb.boundingRect(),
+        // _ => throw new NotImplementedException(),
+        // }
     }
 
     public readonly bool intersects(Shape other) {
         // return this.circle.intersects(other);
-        
-        return this.kind switch {
-            ShapeKind.Circle => this.circle.intersects(other),
-            ShapeKind.Aabb => this.aabb.intersects(other),
+
+        return (kind, other.kind) switch {
+            (ShapeKind.Circle, ShapeKind.Circle) => Vector2.Distance(First, other.First) < Second.X + other.Second.X,
+            // _ => throw new NotImplementedException()
         };
+
+        // return this.kind switch {
+        //     ShapeKind.Circle => this.circle.intersects(other),
+        //     ShapeKind.Aabb => this.aabb.intersects(other),
+        // };
     }
 }
 
@@ -80,13 +84,13 @@ public struct AabbShape {
         return this;
     }
 
-    public readonly bool intersects(Shape other) {
-        return other.kind switch {
-            ShapeKind.Circle => this.intersectsCircle(other.circle),
-            ShapeKind.Aabb => this.intersectsAabb(other.aabb),
-            _ => throw new NotImplementedException(),
-        };
-    }
+    // public readonly bool intersects(Shape other) {
+    //     return other.kind switch {
+    //         ShapeKind.Circle => this.intersectsCircle(other.circle),
+    //         ShapeKind.Aabb => this.intersectsAabb(other.aabb),
+    //         _ => throw new NotImplementedException(),
+    //     };
+    // }
 
     public static Shape fromCenterSize(Vector2 position, Vector2 size) {
         return Shape.Aabb(new AabbShape { min = position - size / 2, max = position + size / 2, });
@@ -113,13 +117,13 @@ public struct CircleShape {
         return aabb.intersectsCircle(this);
     }
 
-    public readonly bool intersects(Shape other) {
-        return other.kind switch {
-            ShapeKind.Circle => this.intersectsCircle(other.circle),
-            ShapeKind.Aabb => this.intersectsAabb(other.aabb),
-            _ => throw new NotImplementedException(),
-        };
-    }
+    // public readonly bool intersects(Shape other) {
+    //     return other.kind switch {
+    //         ShapeKind.Circle => this.intersectsCircle(other.circle),
+    //         ShapeKind.Aabb => this.intersectsAabb(other.aabb),
+    //         _ => throw new NotImplementedException(),
+    //     };
+    // }
 }
 
 public record struct SpatialHashData(
@@ -260,4 +264,3 @@ public static class Vec2Extensions {
         return new Vector2((float)Math.Ceiling(v.X), (float)Math.Ceiling(v.Y));
     }
 }
-
