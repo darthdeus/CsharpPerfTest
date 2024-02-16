@@ -10,10 +10,15 @@ public struct Coord {
     public int Y;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int MakeKey(float x, float y) {
-        return 1000 * (int)x + (int)y;
-        // return (long)x + (long)y << 32;
+    // public static int MakeKey(float x, float y) {
+    // return 1000 * (int)x + (int)y;
+//        // return (long)x + (long)y << 32;
+    // }
+    
+    public static (int, int) MakeKey(float x, float y) {
+        return ((int)x, (int)y);
     }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Coord FromPos(float x, float y) {
@@ -21,7 +26,7 @@ public struct Coord {
 
         return new Coord { X = (int)x + h, Y = (int)y + h };
     }
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static (int, int) MakeInt(float x, float y) {
         return ((int)x, (int)y);

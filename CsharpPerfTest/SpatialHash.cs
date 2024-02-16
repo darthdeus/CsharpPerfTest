@@ -188,7 +188,7 @@ public struct SpatialHash {
     }
 
     public float GridSize;
-    public Dictionary<int, List<SpatialHashData>> Cells;
+    public Dictionary<(int, int), List<SpatialHashData>> Cells;
 
     public SpatialHash(float gridSize) {
         this.GridSize = gridSize;
