@@ -40,13 +40,10 @@ public struct Shape {
         return this.kind switch {
             ShapeKind.Circle => this.circle.BoundingRect(),
             ShapeKind.Aabb => this.aabb.BoundingRect(),
-            // _ => throw new NotImplementedException(),
         };
     }
 
     public readonly bool Intersects(Shape other) {
-        // return this.circle.intersects(other);
-
         return this.kind switch {
             ShapeKind.Circle => this.circle.Intersects(other),
             ShapeKind.Aabb => this.aabb.Intersects(other),
@@ -81,7 +78,6 @@ public struct AabbShape {
         return other.kind switch {
             ShapeKind.Circle => this.IntersectsCircle(other.circle),
             ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
-            _ => throw new NotImplementedException(),
         };
     }
 
@@ -199,8 +195,8 @@ public struct SpatialHash {
         var min = (rect.Min / this.GridSize).Floored();
         var max = (rect.Max / this.GridSize).Ceiled();
 
-        for (var y = min.Y; y <= max.Y; y += 1) {
-            for (var x = min.X; x <= max.X; x += 1) {
+        for (var y = min.Y; y < max.Y; y += 1) {
+            for (var x = min.X; x < max.X; x += 1) {
                 var key = ((int)x, (int)y);
 
                 if (!this.Cells.ContainsKey(key)) {
@@ -219,8 +215,8 @@ public struct SpatialHash {
         var max = (rect.Max / this.GridSize).Ceiled();
         var results = new HashSet<SpatialHashQueryResult>(1);
 
-        for (var y = min.Y; y <= max.Y; y += 1) {
-            for (var x = min.X; x <= max.X; x += 1) {
+        for (var y = min.Y; y < max.Y; y += 1) {
+            for (var x = min.X; x < max.X; x += 1) {
                 var key = ((int)x, (int)y);
 
                 if (this.Cells.TryGetValue(key, out var value)) {
