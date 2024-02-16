@@ -38,19 +38,19 @@ public struct Shape {
 
     public AabbShape BoundingRect() {
         return this.circle.BoundingRect();
-        
+
         // return this.kind switch {
-            // ShapeKind.Circle => this.circle.BoundingRect(),
-            // ShapeKind.Aabb => this.aabb.BoundingRect(),
+        // ShapeKind.Circle => this.circle.BoundingRect(),
+        // ShapeKind.Aabb => this.aabb.BoundingRect(),
         // };
     }
 
     public readonly bool Intersects(Shape other) {
         return this.circle.Intersects(other);
-        
+
         // return this.kind switch {
-            // ShapeKind.Circle => this.circle.Intersects(other),
-            // ShapeKind.Aabb => this.aabb.Intersects(other),
+        // ShapeKind.Circle => this.circle.Intersects(other),
+        // ShapeKind.Aabb => this.aabb.Intersects(other),
         // };
     }
 }
@@ -80,10 +80,10 @@ public struct AabbShape {
 
     public readonly bool Intersects(Shape other) {
         return IntersectsCircle(other.circle);
-        
+
         // return other.kind switch {
-            // ShapeKind.Circle => this.IntersectsCircle(other.circle),
-            // ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
+        // ShapeKind.Circle => this.IntersectsCircle(other.circle),
+        // ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
         // };
     }
 
@@ -104,8 +104,9 @@ public struct CircleShape {
     }
 
     public readonly bool IntersectsCircle(CircleShape other) {
-        var distance = Vector2.Distance(Center, other.Center);
-        return distance <= this.Radius + other.Radius;
+        float r = this.Radius + other.Radius;
+        float distance = Vector2.DistanceSquared(Center, other.Center);
+        return distance <= r * r;
     }
 
     public readonly bool IntersectsAabb(AabbShape aabb) {
@@ -114,7 +115,7 @@ public struct CircleShape {
 
     public readonly bool Intersects(Shape other) {
         return this.IntersectsCircle(other.circle);
-        
+
         // return other.kind switch {
         // ShapeKind.Circle => this.IntersectsCircle(other.circle),
         // ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
@@ -137,7 +138,7 @@ public enum EntityType {
     Enemy
 }
 
-public struct SpatialHashQueryResult {
+public record struct SpatialHashQueryResult {
     public required EntityType Type;
     public required int EntityId;
 
@@ -187,7 +188,7 @@ public struct SpatialHash {
     }
 
     public float GridSize;
-    public Dictionary<(int, int), List<SpatialHashData>> Cells;
+    public Dictionary<int, List<SpatialHashData>> Cells;
 
     public SpatialHash(float gridSize) {
         this.GridSize = gridSize;
@@ -205,7 +206,7 @@ public struct SpatialHash {
 
         for (var y = min.Y; y < max.Y; y += 1) {
             for (var x = min.X; x < max.X; x += 1) {
-                var key = ((int)x, (int)y);
+                var key = Coord.MakeKey(x, y);
 
                 if (!this.Cells.ContainsKey(key)) {
                     this.Cells[key] = [];
@@ -217,15 +218,14 @@ public struct SpatialHash {
         }
     }
 
-    public readonly HashSet<SpatialHashQueryResult> Query(Shape shape, EntityType? filter) {
+    public readonly void Query(HashSet<SpatialHashQueryResult> results, Shape shape, EntityType? filter) {
         var rect = shape.BoundingRect();
         var min = (rect.Min / this.GridSize).Floored();
         var max = (rect.Max / this.GridSize).Ceiled();
-        var results = new HashSet<SpatialHashQueryResult>(1);
 
         for (var y = min.Y; y < max.Y; y += 1) {
             for (var x = min.X; x < max.X; x += 1) {
-                var key = ((int)x, (int)y);
+                var key = Coord.MakeKey(x, y);
 
                 if (this.Cells.TryGetValue(key, out var value)) {
                     foreach (var data in value) {
@@ -245,7 +245,5 @@ public struct SpatialHash {
                 }
             }
         }
-
-        return results;
     }
 }

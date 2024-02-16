@@ -12,6 +12,7 @@ public struct Coord {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int MakeKey(float x, float y) {
         return 1000 * (int)x + (int)y;
+        // return (long)x + (long)y << 32;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -19,6 +20,11 @@ public struct Coord {
         int h = MapSize / 2;
 
         return new Coord { X = (int)x + h, Y = (int)y + h };
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int, int) MakeInt(float x, float y) {
+        return ((int)x, (int)y);
     }
 }
 
