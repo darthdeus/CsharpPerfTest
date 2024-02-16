@@ -37,17 +37,21 @@ public struct Shape {
     }
 
     public AabbShape BoundingRect() {
-        return this.kind switch {
-            ShapeKind.Circle => this.circle.BoundingRect(),
-            ShapeKind.Aabb => this.aabb.BoundingRect(),
-        };
+        return this.circle.BoundingRect();
+        
+        // return this.kind switch {
+            // ShapeKind.Circle => this.circle.BoundingRect(),
+            // ShapeKind.Aabb => this.aabb.BoundingRect(),
+        // };
     }
 
     public readonly bool Intersects(Shape other) {
-        return this.kind switch {
-            ShapeKind.Circle => this.circle.Intersects(other),
-            ShapeKind.Aabb => this.aabb.Intersects(other),
-        };
+        return this.circle.Intersects(other);
+        
+        // return this.kind switch {
+            // ShapeKind.Circle => this.circle.Intersects(other),
+            // ShapeKind.Aabb => this.aabb.Intersects(other),
+        // };
     }
 }
 
@@ -75,10 +79,12 @@ public struct AabbShape {
     }
 
     public readonly bool Intersects(Shape other) {
-        return other.kind switch {
-            ShapeKind.Circle => this.IntersectsCircle(other.circle),
-            ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
-        };
+        return IntersectsCircle(other.circle);
+        
+        // return other.kind switch {
+            // ShapeKind.Circle => this.IntersectsCircle(other.circle),
+            // ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
+        // };
     }
 
     public static Shape FromCenterSize(Vector2 position, Vector2 size) {
@@ -107,11 +113,13 @@ public struct CircleShape {
     }
 
     public readonly bool Intersects(Shape other) {
-        return other.kind switch {
-            ShapeKind.Circle => this.IntersectsCircle(other.circle),
-            ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
-            _ => throw new NotImplementedException(),
-        };
+        return this.IntersectsCircle(other.circle);
+        
+        // return other.kind switch {
+        // ShapeKind.Circle => this.IntersectsCircle(other.circle),
+        // ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
+        // _ => throw new NotImplementedException(),
+        // };
     }
 }
 
