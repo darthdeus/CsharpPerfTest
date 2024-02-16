@@ -89,8 +89,66 @@ public class ObjectPool<T> where T : new() {
     }
 }
 
+public class ArrayPool {
+    private readonly Stack<FixedSizeList<SpatialHashData>> _availableObjects = new();
+
+    public FixedSizeList<SpatialHashData> Get() {
+        if (_availableObjects.Count == 0) {
+            return new FixedSizeList<SpatialHashData>(50);
+        }
+
+        return _availableObjects.Pop();
+    }
+
+    public void Release(FixedSizeList<SpatialHashData> obj) {
+        obj.Clear();
+        _availableObjects.Push(obj);
+    }
+}
+
+public class FixedSizeList<T> where T : struct {
+    public T[] Items;
+    public int Count;
+
+    public FixedSizeList(int capacity) {
+        Items = new T[capacity];
+        Count = 0;
+    }
+
+    public ref T this[int index] {
+        get {
+            if (index < 0 || index >= Count) // Now checks _count instead of _items.Length
+                throw new IndexOutOfRangeException();
+            return ref Items[index];
+        }
+    }
+
+    public int Capacity => Items.Length;
+
+    public void Add(T item) {
+        if (Count >= Items.Length) {
+            Grow();
+        }
+
+        Items[Count] = item;
+        Count++;
+    }
+
+    private void Grow() {
+        int newCapacity = Items.Length == 0 ? 4 : Items.Length * 2;
+        T[] newArray = new T[newCapacity];
+        Array.Copy(Items, newArray, Items.Length);
+        Items = newArray;
+    }
+
+    public void Clear() {
+        Count = 0;
+    }
+}
+
 public struct SpatialHash {
-    public ObjectPool<List<SpatialHashData>> Pool = new();
+    // public ObjectPool<List<SpatialHashData>> Pool = new();
+    public ArrayPool Pool = new();
     private static readonly SpatialHash Instance = new(2f);
 
     public static SpatialHash Get() {
@@ -98,7 +156,7 @@ public struct SpatialHash {
     }
 
     public float GridSize;
-    public readonly Dictionary<int, List<SpatialHashData>> Cells;
+    public readonly Dictionary<int, FixedSizeList<SpatialHashData>> Cells;
 
     public SpatialHash(float gridSize) {
         GridSize = gridSize;
@@ -110,6 +168,7 @@ public struct SpatialHash {
         foreach (var (key, value) in Cells) {
             Pool.Release(value);
         }
+
         Cells.Clear();
     }
 
@@ -123,13 +182,11 @@ public struct SpatialHash {
                 var key = Coord.MakeKey(x, y);
 
                 var item = new SpatialHashData(Shape: shape, Type: type, EntityId: entityId);
-                
+
                 if (Cells.TryGetValue(key, out var entry)) {
                     entry.Add(item);
-
                 } else {
                     var list = Pool.Get();
-                    list.Clear();
                     list.Add(item);
                     Cells[key] = list;
                 }
@@ -151,7 +208,9 @@ public struct SpatialHash {
                 var key = Coord.MakeKey(x, y);
 
                 if (this.Cells.TryGetValue(key, out var value)) {
-                    foreach (var data in value) {
+                    for (int i = 0; i < value.Count; i++) {
+                        ref var data = ref value[i];
+
                         if (filter is not null && data.Type != filter) {
                             continue;
                         }
@@ -168,7 +227,7 @@ public struct SpatialHash {
                 }
             }
         }
-        
+
         // return results;
     }
 }
