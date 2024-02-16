@@ -3,18 +3,12 @@ using System.Runtime.CompilerServices;
 
 namespace CsharpPerfTest;
 
-public enum ShapeKind : byte {
-    Circle,
-}
-
 public struct Shape {
-    public ShapeKind Kind;
     public Vector2 First;
     public Vector2 Second;
 
     public static Shape Circle(Vector2 center, float radius) {
         var shape = new Shape {
-            Kind = ShapeKind.Circle,
             First = center,
             Second = new Vector2(radius),
         };
@@ -23,12 +17,9 @@ public struct Shape {
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public AabbShape BoundingRect() {
-        return Kind switch {
-            ShapeKind.Circle => new AabbShape {
-                Min = First - new Vector2(Second.X),
-                Max = First + new Vector2(Second.X),
-            },
-            _ => new AabbShape()
+        return new AabbShape {
+            Min = First - new Vector2(Second.X),
+            Max = First + new Vector2(Second.X),
         };
     }
 
@@ -36,10 +27,13 @@ public struct Shape {
     public readonly bool Intersects(Shape other) {
         // return this.circle.intersects(other);
 
-        return (Kind, other.Kind) switch {
-            (ShapeKind.Circle, ShapeKind.Circle) => Vector2.Distance(First, other.First) < Second.X + other.Second.X,
-            _ => false
-        };
+        float d = Second.X + other.Second.X;
+        return Vector2.DistanceSquared(First, other.First) < d * d;
+
+        // return (Kind, other.Kind) switch {
+        //     (ShapeKind.Circle, ShapeKind.Circle) =>,
+        //     _ => false
+        // };
     }
 }
 
@@ -71,38 +65,12 @@ public struct Coord {
     public static int MakeKey(float x, float y) {
         return 1000 * (int)x + (int)y;
     }
-}
 
-public class ObjectPool<T> where T : new() {
-    private readonly Stack<T> _availableObjects = new Stack<T>();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Coord FromPos(float x, float y) {
+        int h = SpatialHash.MapSize / 2;
 
-    public T Get() {
-        if (_availableObjects.Count == 0) {
-            return new T();
-        }
-
-        return _availableObjects.Pop();
-    }
-
-    public void Release(T obj) {
-        _availableObjects.Push(obj);
-    }
-}
-
-public class ArrayPool {
-    private readonly Stack<FixedSizeList<SpatialHashData>> _availableObjects = new();
-
-    public FixedSizeList<SpatialHashData> Get() {
-        if (_availableObjects.Count == 0) {
-            return new FixedSizeList<SpatialHashData>(50);
-        }
-
-        return _availableObjects.Pop();
-    }
-
-    public void Release(FixedSizeList<SpatialHashData> obj) {
-        obj.Clear();
-        _availableObjects.Push(obj);
+        return new Coord { X = (int)x + h, Y = (int)y + h };
     }
 }
 
@@ -122,8 +90,6 @@ public class FixedSizeList<T> where T : struct {
             return ref Items[index];
         }
     }
-
-    public int Capacity => Items.Length;
 
     public void Add(T item) {
         if (Count >= Items.Length) {
@@ -147,29 +113,33 @@ public class FixedSizeList<T> where T : struct {
 }
 
 public struct SpatialHash {
-    // public ObjectPool<List<SpatialHashData>> Pool = new();
-    public ArrayPool Pool = new();
+    public const int MapSize = 50;
     private static readonly SpatialHash Instance = new(2f);
 
     public static SpatialHash Get() {
         return Instance;
     }
 
-    public float GridSize;
-    public readonly Dictionary<int, FixedSizeList<SpatialHashData>> Cells;
+    public readonly float GridSize;
+    public readonly FixedSizeList<SpatialHashData>[,] Cells;
 
     public SpatialHash(float gridSize) {
         GridSize = gridSize;
-        Cells = [];
+        Cells = new FixedSizeList<SpatialHashData>[50, 50];
+
+        for (int i = 0; i < Cells.GetLength(0); i++) {
+            for (int j = 0; j < Cells.GetLength(1); j++) {
+                Cells[i, j] = new FixedSizeList<SpatialHashData>(50);
+            }
+        }
     }
 
     public readonly void Clear() {
-        // return to pool
-        foreach (var (key, value) in Cells) {
-            Pool.Release(value);
+        for (int i = 0; i < Cells.GetLength(0); i++) {
+            for (int j = 0; j < Cells.GetLength(1); j++) {
+                Cells[i, j].Clear();
+            }
         }
-
-        Cells.Clear();
     }
 
     public void AddShape(Shape shape, EntityType type, int entityId) {
@@ -179,56 +149,45 @@ public struct SpatialHash {
 
         for (var y = min.Y; y < max.Y; y += 1) {
             for (var x = min.X; x < max.X; x += 1) {
-                var key = Coord.MakeKey(x, y);
-
-                var item = new SpatialHashData(Shape: shape, Type: type, EntityId: entityId);
-
-                if (Cells.TryGetValue(key, out var entry)) {
-                    entry.Add(item);
-                } else {
-                    var list = Pool.Get();
-                    list.Add(item);
-                    Cells[key] = list;
-                }
+                var item = new SpatialHashData(shape, type, entityId);
+                var coord = Coord.FromPos(x, y);
+                Cells[coord.X, coord.Y].Add(item);
             }
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly void Query(List<SpatialHashQueryResult> results, Shape shape, EntityType? filter) {
+    public readonly void Query(List<SpatialHashQueryResult> results, Shape shape, EntityType? _filter) {
         var rect = shape.BoundingRect();
         var min = (rect.Min / GridSize).Floored();
         var max = (rect.Max / GridSize).Ceiled();
-        // var results = new HashSet<SpatialHashQueryResult>(1);
 
         results.Clear();
 
-        for (var y = min.Y; y <= max.Y; y += 1) {
-            for (var x = min.X; x <= max.X; x += 1) {
-                var key = Coord.MakeKey(x, y);
+        for (var y = min.Y; y < max.Y; y += 1) {
+            for (var x = min.X; x < max.X; x += 1) {
+                var coord = Coord.FromPos(x, y);
 
-                if (this.Cells.TryGetValue(key, out var value)) {
-                    for (int i = 0; i < value.Count; i++) {
-                        ref var data = ref value[i];
+                ref var value = ref Cells[coord.X, coord.Y];
 
-                        if (filter is not null && data.Type != filter) {
-                            continue;
-                        }
+                for (int i = 0; i < value.Count; i++) {
+                    ref var data = ref value[i];
 
-                        if (data.Shape.Intersects(shape)) {
-                            results.Add(
-                                new SpatialHashQueryResult {
-                                    Type = data.Type,
-                                    EntityId = data.EntityId,
-                                }
-                            );
-                        }
+                    // if (filter is not null && data.Type != filter) {
+                    //     continue;
+                    // }
+
+                    if (data.Shape.Intersects(shape)) {
+                        results.Add(
+                            new SpatialHashQueryResult {
+                                Type = data.Type,
+                                EntityId = data.EntityId,
+                            }
+                        );
                     }
                 }
             }
         }
-
-        // return results;
     }
 }
 

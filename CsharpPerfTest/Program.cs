@@ -9,7 +9,7 @@ var spatial = SpatialHash.Get();
 
 var stopwatch = new System.Diagnostics.Stopwatch();
 
-var result = new List<SpatialHashQueryResult>();
+var result = new List<SpatialHashQueryResult>(2000);
 
 while (true) {
     stopwatch.Start();
@@ -39,7 +39,7 @@ while (true) {
         count += result.Count;
     }
 
-    Console.WriteLine($"Count: {count} ... {stopwatch.ElapsedMilliseconds}ms");
+    Console.WriteLine($"Count: {count} ... {stopwatch.Elapsed.TotalMicroseconds}us");
     // Console.WriteLine($"Count: {count} ... {stopwatch.ElapsedMilliseconds}ms  ... cells: {spatial.Cells.Count} ... Average cell size: {total / int.Max(spatial.Cells.Count, 1)}");
 
     stopwatch.Reset();
