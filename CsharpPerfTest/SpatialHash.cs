@@ -1,138 +1,247 @@
 using System.Numerics;
-using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace CsharpPerfTest;
 
-public struct Shape {
-    public Vector2 First;
-    public Vector2 Second;
+public enum ShapeKind : int {
+    Aabb,
+    Circle,
+}
 
-    public static Shape Circle(Vector2 center, float radius) {
+[StructLayout(LayoutKind.Explicit)]
+public struct Shape {
+    [FieldOffset(0)] public ShapeKind kind;
+
+    [FieldOffset(4)] public AabbShape aabb;
+
+    [FieldOffset(4)] public CircleShape circle;
+
+    public static Shape Circle(CircleShape s) {
         var shape = new Shape {
-            First = center,
-            Second = new Vector2(radius),
+            kind = ShapeKind.Circle,
+            aabb = default,
+            circle = default,
         };
+        shape.circle = s;
         return shape;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Shape Aabb(AabbShape s) {
+        var shape = new Shape {
+            kind = ShapeKind.Aabb,
+            aabb = default,
+            circle = default,
+        };
+        shape.aabb = s;
+        return shape;
+    }
+
     public AabbShape BoundingRect() {
-        return new AabbShape {
-            Min = First - new Vector2(Second.X),
-            Max = First + new Vector2(Second.X),
+        return this.kind switch {
+            ShapeKind.Circle => this.circle.BoundingRect(),
+            ShapeKind.Aabb => this.aabb.BoundingRect(),
+            // _ => throw new NotImplementedException(),
         };
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly bool Intersects(Shape other) {
         // return this.circle.intersects(other);
 
-        float d = Second.X + other.Second.X;
-        return Vector2.DistanceSquared(First, other.First) < d * d;
-
-        // return (Kind, other.Kind) switch {
-        //     (ShapeKind.Circle, ShapeKind.Circle) =>,
-        //     _ => false
-        // };
+        return this.kind switch {
+            ShapeKind.Circle => this.circle.Intersects(other),
+            ShapeKind.Aabb => this.aabb.Intersects(other),
+        };
     }
 }
 
 public struct AabbShape {
     public Vector2 Min;
     public Vector2 Max;
+
+    public readonly bool IntersectsCircle(CircleShape circle) {
+        // NOTE @Perf: Use DistanceSquared to avoid a square root. Yes, it
+        // matters.
+        var closest = Vector2.Max(this.Min, Vector2.Min(Max, circle.Center));
+        var distanceSquared = Vector2.DistanceSquared(circle.Center, closest);
+        return distanceSquared <= circle.Radius * circle.Radius;
+    }
+
+    public readonly bool IntersectsAabb(AabbShape other) {
+        return this.Min.X <= other.Max.X
+               && this.Max.X >= other.Min.X
+               && this.Min.Y <= other.Max.Y
+               && this.Max.Y >= other.Min.Y;
+    }
+
+    public readonly AabbShape BoundingRect() {
+        return this;
+    }
+
+    public readonly bool Intersects(Shape other) {
+        return other.kind switch {
+            ShapeKind.Circle => this.IntersectsCircle(other.circle),
+            ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
+            _ => throw new NotImplementedException(),
+        };
+    }
+
+    public static Shape FromCenterSize(Vector2 position, Vector2 size) {
+        return Shape.Aabb(new AabbShape { Min = position - size / 2, Max = position + size / 2, });
+    }
+}
+
+public struct CircleShape {
+    public Vector2 Center;
+    public float Radius;
+
+    public AabbShape BoundingRect() {
+        return new AabbShape {
+            Min = this.Center - new Vector2(this.Radius),
+            Max = this.Center + new Vector2(this.Radius),
+        };
+    }
+
+    public readonly bool IntersectsCircle(CircleShape other) {
+        var distance = Vector2.Distance(Center, other.Center);
+        return distance <= this.Radius + other.Radius;
+    }
+
+    public readonly bool IntersectsAabb(AabbShape aabb) {
+        return aabb.IntersectsCircle(this);
+    }
+
+    public readonly bool Intersects(Shape other) {
+        return other.kind switch {
+            ShapeKind.Circle => this.IntersectsCircle(other.circle),
+            ShapeKind.Aabb => this.IntersectsAabb(other.aabb),
+            _ => throw new NotImplementedException(),
+        };
+    }
 }
 
 public record struct SpatialHashData(
     Shape Shape,
     EntityType Type,
+    //  This is the entity id, to be interpreted differently for different
+    //  types of entities. For enemies, it can be converted into an index of
+    //  the enemy gen arena. For players, it's the playerIndex.
     int EntityId
 );
 
 public enum EntityType {
+    Player,
     Enemy
 }
 
 public struct SpatialHashQueryResult {
     public required EntityType Type;
     public required int EntityId;
+
+    public readonly Player AssumePlayer() {
+        if (this.Type != EntityType.Player) {
+            throw new Exception("Not a player");
+        }
+
+        return Player.AtIndex(this.EntityId);
+    }
+
+    public readonly Id<Enemy> AssumeEnemyId() {
+        if (this.Type != EntityType.Enemy) {
+            throw new Exception("Not an enemy");
+        }
+
+        return Id<Enemy>.From(this.EntityId);
+    }
+
+    public readonly ref Enemy AssumeEnemy() {
+        throw new NotImplementedException();
+        // return ref Enemy.All[this.AssumeEnemyId()];
+    }
 }
 
+public class Id<T> {
+    public static Id<Enemy> From(int entityId) {
+        throw new NotImplementedException();
+    }
+}
+
+public class Enemy {
+    public static object? All { get; set; }
+}
+
+public class Player {
+    public static Player AtIndex(int entityId) {
+        throw new NotImplementedException();
+    }
+}
 
 public struct SpatialHash {
-    public const int MapSize = 50;
     private static readonly SpatialHash Instance = new(2f);
 
     public static SpatialHash Get() {
         return Instance;
     }
 
-    public readonly float GridSize;
-    public readonly FixedSizeList<SpatialHashData>[,] Cells;
+    public float GridSize;
+    public Dictionary<(int, int), List<SpatialHashData>> Cells;
 
     public SpatialHash(float gridSize) {
-        GridSize = gridSize;
-        Cells = new FixedSizeList<SpatialHashData>[50, 50];
-
-        for (int i = 0; i < Cells.GetLength(0); i++) {
-            for (int j = 0; j < Cells.GetLength(1); j++) {
-                Cells[i, j] = new FixedSizeList<SpatialHashData>(50);
-            }
-        }
+        this.GridSize = gridSize;
+        this.Cells = [];
     }
 
     public readonly void Clear() {
-        for (int i = 0; i < Cells.GetLength(0); i++) {
-            for (int j = 0; j < Cells.GetLength(1); j++) {
-                Cells[i, j].Clear();
-            }
-        }
+        this.Cells.Clear();
     }
 
     public void AddShape(Shape shape, EntityType type, int entityId) {
         var rect = shape.BoundingRect();
-        var min = (rect.Min / GridSize).Floored();
-        var max = (rect.Max / GridSize).Ceiled();
+        var min = (rect.Min / this.GridSize).Floored();
+        var max = (rect.Max / this.GridSize).Ceiled();
 
-        for (var y = min.Y; y < max.Y; y += 1) {
-            for (var x = min.X; x < max.X; x += 1) {
-                var item = new SpatialHashData(shape, type, entityId);
-                var coord = Coord.FromPos(x, y);
-                Cells[coord.X, coord.Y].Add(item);
+        for (var y = min.Y; y <= max.Y; y += 1) {
+            for (var x = min.X; x <= max.X; x += 1) {
+                var key = ((int)x, (int)y);
+
+                if (!this.Cells.ContainsKey(key)) {
+                    this.Cells[key] = [];
+                }
+
+                this.Cells[key]
+                    .Add(new SpatialHashData(Shape: shape, Type: type, EntityId: entityId));
             }
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly void Query(List<SpatialHashQueryResult> results, Shape shape, EntityType? _filter) {
+    public readonly HashSet<SpatialHashQueryResult> Query(Shape shape, EntityType? filter) {
         var rect = shape.BoundingRect();
-        var min = (rect.Min / GridSize).Floored();
-        var max = (rect.Max / GridSize).Ceiled();
+        var min = (rect.Min / this.GridSize).Floored();
+        var max = (rect.Max / this.GridSize).Ceiled();
+        var results = new HashSet<SpatialHashQueryResult>(1);
 
-        results.Clear();
+        for (var y = min.Y; y <= max.Y; y += 1) {
+            for (var x = min.X; x <= max.X; x += 1) {
+                var key = ((int)x, (int)y);
 
-        for (var y = min.Y; y < max.Y; y += 1) {
-            for (var x = min.X; x < max.X; x += 1) {
-                var coord = Coord.FromPos(x, y);
+                if (this.Cells.TryGetValue(key, out var value)) {
+                    foreach (var data in value) {
+                        if (filter is not null && data.Type != filter) {
+                            continue;
+                        }
 
-                ref var value = ref Cells[coord.X, coord.Y];
-
-                for (int i = 0; i < value.Count; i++) {
-                    ref var data = ref value[i];
-
-                    // if (filter is not null && data.Type != filter) {
-                    //     continue;
-                    // }
-
-                    if (data.Shape.Intersects(shape)) {
-                        results.Add(
-                            new SpatialHashQueryResult {
-                                Type = data.Type,
-                                EntityId = data.EntityId,
-                            }
-                        );
+                        if (data.Shape.Intersects(shape)) {
+                            results.Add(
+                                new SpatialHashQueryResult {
+                                    Type = data.Type,
+                                    EntityId = data.EntityId,
+                                }
+                            );
+                        }
                     }
                 }
             }
         }
+
+        return results;
     }
 }

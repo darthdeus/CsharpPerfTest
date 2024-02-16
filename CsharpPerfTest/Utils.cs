@@ -4,6 +4,8 @@ using System.Runtime.CompilerServices;
 namespace CsharpPerfTest;
 
 public struct Coord {
+    public const int MapSize = 50;
+
     public int X;
     public int Y;
 
@@ -14,7 +16,7 @@ public struct Coord {
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Coord FromPos(float x, float y) {
-        int h = SpatialHash.MapSize / 2;
+        int h = MapSize / 2;
 
         return new Coord { X = (int)x + h, Y = (int)y + h };
     }
